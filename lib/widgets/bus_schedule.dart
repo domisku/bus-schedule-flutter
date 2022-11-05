@@ -1,31 +1,34 @@
-import 'dart:convert';
-
+import 'package:bus_schedule/entities/time.dart';
 import 'package:bus_schedule/utils/weekday.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
 import '../entities/bus.dart';
 
+// ignore: must_be_immutable
 class BusSchedule extends StatefulWidget {
-  const BusSchedule({super.key});
+  BusSchedule(
+      {super.key,
+      required this.busList,
+      required this.time,
+      required this.weekday});
+
+  List<Bus> busList;
+  int weekday;
+  Time time;
 
   @override
   State<BusSchedule> createState() => _BusScheduleState();
 }
 
 class _BusScheduleState extends State<BusSchedule> {
-  late Future<BusList?> busList = Future.value(null);
-  late DateTime date;
-  late int currHour;
-  late int currMinute;
-  late int weekday;
+  late Time time = widget.time;
+  late int weekday = widget.weekday;
 
   late List<int> shownBuses = [];
 
   @override
   void initState() {
     super.initState();
-    syncData();
   }
 
   void toggleShownBuses(int busNumber) {
@@ -38,134 +41,109 @@ class _BusScheduleState extends State<BusSchedule> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<BusList?>(
-      future: busList,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    return SingleChildScrollView(
+      child: ExpansionPanelList(
+        expansionCallback: (int index, bool isExpanded) {
+          setState(() {
+            var busNumber = widget.busList[index].number;
+            toggleShownBuses(busNumber);
+          });
+        },
+        children: List.generate(widget.busList.length, (i) {
+          var busNumber = widget.busList[i].number;
 
-        if (snapshot.hasData) {
-          final busList = snapshot.data!.busList;
+          return ExpansionPanel(
+            canTapOnHeader: true,
+            isExpanded: shownBuses.contains(widget.busList[i].number),
+            headerBuilder: (context, isExpanded) {
+              return ListTile(
+                title: Text(
+                  busNumber.toString(),
+                  style: TextStyle(
+                      color: isExpanded
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.black,
+                      fontWeight:
+                          isExpanded ? FontWeight.w600 : FontWeight.w500,
+                      fontSize: 28),
+                ),
+              );
+            },
+            body: Padding(
+              padding:
+                  const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 16.0),
+              child: ListView.builder(
+                  physics: const ClampingScrollPhysics(),
+                  shrinkWrap: true,
+                  itemCount: widget.busList[i].stops.length,
+                  itemBuilder: ((BuildContext context, int j) {
+                    var stop = widget.busList[i].stops[j];
 
-          return SingleChildScrollView(
-            child: ExpansionPanelList(
-              expansionCallback: (int index, bool isExpanded) {
-                setState(() {
-                  var busNumber = busList[index].number;
-                  toggleShownBuses(busNumber);
-                });
-              },
-              children: List.generate(busList.length, (i) {
-                var busNumber = busList[i].number;
+                    return Column(
+                      children: [
+                        SizedBox(
+                          height: 25,
+                          child: ListTile(
+                            leading: Text(
+                              '${stop.name} st.',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 20),
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding:
+                              const EdgeInsets.only(top: 12.0, bottom: 12.0),
+                          child: ListView.builder(
+                            physics: const ClampingScrollPhysics(),
+                            shrinkWrap: true,
+                            itemCount: stop.routes.length,
+                            itemBuilder: ((BuildContext context, int k) {
+                              var route = stop.routes[k];
 
-                return ExpansionPanel(
-                  isExpanded: shownBuses.contains(busList[i].number),
-                  headerBuilder: (context, isExpanded) {
-                    return ListTile(
-                      title: Text(
-                        busNumber.toString(),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w500, fontSize: 28),
-                      ),
-                    );
-                  },
-                  body: Padding(
-                    padding: const EdgeInsets.only(left: 16.0, right: 16.0),
-                    child: ListView.builder(
-                        physics: const ClampingScrollPhysics(),
-                        shrinkWrap: true,
-                        itemCount: busList[i].stops.length,
-                        itemBuilder: ((BuildContext context, int j) {
-                          var stop = busList[i].stops[j];
+                              var earliestArrivalTimes =
+                                  getEarliestBusArrivalTimes(route.schedule);
 
-                          return Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    '${stop.name} st.',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 20),
-                                  ),
-                                ],
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                    top: 12.0, bottom: 12.0),
-                                child: ListView.builder(
-                                  physics: const ClampingScrollPhysics(),
-                                  shrinkWrap: true,
-                                  itemCount: stop.routes.length,
-                                  itemBuilder: ((BuildContext context, int k) {
-                                    var route = stop.routes[k];
+                              var timeTable =
+                                  displayTimetable(earliestArrivalTimes);
 
-                                    var earliestArrivalTimes =
-                                        getEarliestBusArrivalTimes(
-                                            route.schedule);
-
-                                    var timeTable =
-                                        displayTimetable(earliestArrivalTimes);
-
-                                    return Card(
-                                      child: ListTile(
-                                        title: Text(
-                                            '${route.start} - ${route.end}'),
-                                        trailing: timeTable.isEmpty
-                                            ? const Icon(Icons.block,
-                                                color: Colors.black)
-                                            : Text(timeTable,
-                                                style: const TextStyle(
-                                                    fontWeight: FontWeight.w500,
-                                                    fontSize: 16)),
-                                      ),
-                                    );
-                                  }),
+                              return SizedBox(
+                                height: 40,
+                                child: ListTile(
+                                  title: Text('${route.start} - ${route.end}'),
+                                  trailing: timeTable.isEmpty
+                                      ? const Icon(Icons.block,
+                                          color: Colors.black)
+                                      : Text(timeTable,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w500,
+                                              fontSize: 16)),
                                 ),
-                              )
-                            ],
-                          );
-                        })),
-                  ),
-                );
-              }),
+                              );
+                            }),
+                          ),
+                        )
+                      ],
+                    );
+                  })),
             ),
           );
-        } else if (snapshot.hasError) {
-          return Center(child: Text('${snapshot.error}'));
-        }
-
-        return const Center(child: Text('Something went wrong'));
-      },
+        }),
+      ),
     );
-  }
-
-  void syncData() {
-    setState(() {
-      setCurrentTime();
-      busList = fetchSchedule();
-    });
-  }
-
-  void setCurrentTime() {
-    date = DateTime.now();
-    currHour = date.hour;
-    currMinute = date.minute;
-    weekday = date.weekday;
   }
 
   List<String> getEarliestBusArrivalTimes(Schedule schedule) {
     List<String> timeTable = getTimetable(schedule, weekday);
 
     for (var i = 0; i < timeTable.length; i++) {
-      var time = splitDate(timeTable[i]);
+      var hourMinute = splitDate(timeTable[i]);
       bool isLastItem = i == timeTable.length - 1;
 
-      bool haveNoArrivalsThisHour = time['hour']! > currHour;
+      bool haveNoArrivalsThisHour = hourMinute['hour']! > time.currHour;
 
-      bool isEarliestArrivalTime =
-          time['hour'] == currHour && time['minute']! > currMinute;
+      bool isEarliestArrivalTime = hourMinute['hour'] == time.currHour &&
+          hourMinute['minute']! > time.currMinute;
 
       if (isEarliestArrivalTime || haveNoArrivalsThisHour) {
         return isLastItem ? [timeTable[i]] : [timeTable[i], timeTable[i + 1]];
@@ -179,17 +157,6 @@ class _BusScheduleState extends State<BusSchedule> {
     var split = date.split(':');
 
     return {'hour': int.parse(split[0]), 'minute': int.parse(split[1])};
-  }
-
-  Future<BusList> fetchSchedule() async {
-    final response = await http.get(Uri.parse(
-        'https://bus-schedule-367109-default-rtdb.europe-west1.firebasedatabase.app/buses.json'));
-
-    if (response.statusCode == 200) {
-      return BusList.fromJson(jsonDecode(response.body));
-    } else {
-      throw Exception('Failed to load bus schedule');
-    }
   }
 }
 
