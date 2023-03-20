@@ -5,6 +5,7 @@ import 'package:bus_schedule/utils/weekday.dart';
 import 'package:bus_schedule/widgets/bus_schedule.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../entities/bus.dart';
@@ -50,16 +51,18 @@ class _TabViewPageState extends State<TabViewPage>
   @override
   void initState() {
     super.initState();
-    syncData();
     setCurrentTime();
-    var initialIndex = getInitialTabIndex();
+    var initialIndex = getTabIndex();
     tabController =
         TabController(length: 3, vsync: this, initialIndex: initialIndex);
+    syncData();
   }
 
   void syncData() {
     setState(() {
       setCurrentTime();
+      var tabIndex = getTabIndex();
+      tabController.animateTo(tabIndex);
       busList = fetchSchedule();
     });
   }
@@ -69,7 +72,8 @@ class _TabViewPageState extends State<TabViewPage>
 
     weekday = date.weekday;
     time = Time(currHour: date.hour, currMinute: date.minute);
-    timeInput.text = '${date.hour}:${date.minute}';
+    var formattedDate = DateFormat('kk:mm').format(date);
+    timeInput.text = formattedDate;
   }
 
   Future<BusList> fetchSchedule() async {
@@ -83,7 +87,7 @@ class _TabViewPageState extends State<TabViewPage>
     }
   }
 
-  int getInitialTabIndex() {
+  int getTabIndex() {
     if (isWorkDay(weekday)) {
       return 0;
     } else if (isSaturday(weekday)) {
@@ -96,7 +100,9 @@ class _TabViewPageState extends State<TabViewPage>
   }
 
   void updateTime(TimeOfDay pickedTime) {
-    timeInput.text = '${pickedTime.hour}:${pickedTime.minute}';
+    var formattedDate = pickedTime.format(context);
+
+    timeInput.text = formattedDate;
     time = Time(currHour: pickedTime.hour, currMinute: pickedTime.minute);
     busList = fetchSchedule();
   }
